@@ -63,16 +63,22 @@ palette_status_t PaletteSchedSetPriority(int32_t tid, int32_t managed_priority) 
         return PALETTE_STATUS_INVALID_ARGUMENT;
     }
     int new_nice = kNiceValues[managed_priority - art::palette::kMinManagedThreadPriority];
-    int curr_nice = getpriority(PRIO_PROCESS, tid);
-
-    if (curr_nice == new_nice) {
-        return PALETTE_STATUS_OK;
-    }
 
     if (new_nice >= ANDROID_PRIORITY_BACKGROUND) {
         SetTaskProfiles(tid, {"SCHED_SP_SYSTEM"}, true);
-    } else if (curr_nice >= ANDROID_PRIORITY_BACKGROUND) {
-        SetTaskProfiles(tid, {"SCHED_SP_FOREGROUND"}, true);
+    } else {
+        SchedPolicy process_policy;
+        SchedPolicy current_policy;
+        if (get_sched_policy(getpid(), &process_policy) != 0) {
+            process_policy = SP_FOREGROUND;
+        }
+        if (get_sched_policy(tid, &current_policy) != 0) {
+            current_policy = SP_FOREGROUND;
+        }
+        // Change to the sched policy group of the process.
+        if (current_policy != process_policy) {
+            SetTaskProfiles(tid, {get_sched_policy_profile_name(process_policy)}, true);
+        }
     }
 
     if (setpriority(PRIO_PROCESS, tid, new_nice) != 0) {
